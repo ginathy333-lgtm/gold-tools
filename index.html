@@ -3,491 +3,410 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>积金持仓与卖出策略穿透分析</title>
+    <title>积金持仓与卖出穿透分析工具</title>
+    <!-- 引入纯前端免费 OCR 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         :root {
-            --bg-color: #F7F8FA;
+            --bg-color: #F4F6F9;
             --card-bg: #FFFFFF;
-            --primary: #C5A059; /* 典雅金 */
+            --primary: #C5A059;
             --primary-dark: #A47E3B;
             --text-main: #1D1E22;
             --text-sub: #8C8D93;
-            --border-color: #EBECEF;
-            --danger: #E65555;
-            --success: #2ECC71;
+            --border-color: #E2E8F0;
+            --danger: #E53E3E;
+            --success: #38A169;
             --radius: 12px;
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background-color: var(--bg-color); color: var(--text-main); padding-bottom: 40px; }
 
-        .header { background: linear-gradient(135deg, #1D1E22 0%, #34363C 100%); color: #FFF; padding: 24px 20px; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px; }
-        .header h1 { font-size: 20px; font-weight: 600; color: var(--primary); margin-bottom: 6px; }
-        .header p { font-size: 13px; color: #A0A2A8; line-height: 1.4; }
+        .header { background: #1D1E22; color: #FFF; padding: 20px; text-align: center; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
+        .header h1 { font-size: 18px; color: var(--primary); margin-bottom: 4px; }
+        .header p { font-size: 12px; color: #A0A2A8; }
 
-        .container { padding: 16px; max-width: 600px; margin: 0 auto; }
+        .container { padding: 14px; max-width: 600px; margin: 0 auto; }
 
-        /* Step Card */
-        .card { background: var(--card-bg); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.03); border: 1px solid var(--border-color); }
-        .card-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid var(--primary); padding-left: 10px; }
-        .card-title span.step-num { font-size: 12px; background: rgba(197, 160, 89, 0.15); color: var(--primary-dark); padding: 2px 8px; border-radius: 10px; font-weight: normal; }
+        .card { background: var(--card-bg); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; border: 1px solid var(--border-color); box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
+        .card-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid var(--primary); padding-left: 8px; }
 
-        /* Form Inputs */
-        .form-group { margin-bottom: 12px; }
-        .form-group label { display: block; font-size: 13px; color: var(--text-sub); margin-bottom: 6px; }
-        .form-row { display: flex; gap: 8px; }
-        input, select { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 14px; outline: none; background: #FAFAFA; transition: border 0.2s; }
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }
+        .form-row { display: flex; gap: 6px; }
+        input, select { width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; outline: none; background: #FAFAFA; }
         input:focus, select:focus { border-color: var(--primary); background: #FFF; }
 
-        /* Buttons */
-        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+        /* 上传组件 */
+        .upload-area { border: 2px dashed var(--primary); background: rgba(197, 160, 89, 0.05); border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; transition: 0.2s; }
+        .upload-area:active { background: rgba(197, 160, 89, 0.15); }
+        .upload-area p { font-size: 13px; color: var(--primary-dark); font-weight: 500; }
+        .upload-area span { font-size: 11px; color: var(--text-sub); display: block; margin-top: 4px; }
+
+        /* 按钮 */
+        .btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
         .btn-primary { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: #FFF; }
-        .btn-secondary { background: #EFEFEF; color: var(--text-main); margin-top: 8px; }
-        .btn-danger-sm { background: transparent; color: var(--danger); border: none; font-size: 12px; cursor: pointer; padding: 4px; }
-        .btn:active { opacity: 0.85; }
+        .btn-secondary { background: #EDF2F7; color: var(--text-main); margin-top: 6px; font-size: 12px; }
+        .btn-danger-sm { background: transparent; color: var(--danger); border: none; font-size: 12px; padding: 2px 6px; }
 
-        /* Dynamic Item List */
-        .item-list { margin-top: 10px; }
-        .item-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #F9FAFB; border-radius: 8px; margin-bottom: 8px; font-size: 13px; border: 1px solid var(--border-color); }
-        .item-info div:first-child { font-weight: 600; color: var(--text-main); }
-        .item-info div:last-child { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+        /* 表格展示 */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+        .data-table th, .data-table td { padding: 6px 4px; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .data-table th { color: var(--text-sub); font-weight: normal; background: #F8FAFC; }
+        .data-table input { padding: 4px; font-size: 11px; }
 
-        /* Results Display */
-        .result-box { background: #FFF; border-radius: var(--radius); padding: 18px; border: 1.5px solid var(--primary); }
-        .summary-card { display: flex; justify-content: space-around; background: rgba(197, 160, 89, 0.08); padding: 14px; border-radius: 8px; margin-bottom: 16px; text-align: center; }
-        .summary-item .num { font-size: 20px; font-weight: 700; color: var(--primary-dark); }
-        .summary-item .label { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+        .tag { display: inline-block; font-size: 10px; padding: 1px 5px; border-radius: 4px; font-weight: bold; }
+        .tag-buy { background: #E6FFFA; color: #234E52; }
+        .tag-sell { background: #FFF5F5; color: #9B2C2C; }
 
-        .lot-badge { display: inline-block; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #EBF5FF; color: #0066CC; margin-left: 6px; }
-        .tag-sell { background: #FFF0F0; color: var(--danger); }
-        .tag-strategy { background: #F3E8FF; color: #7E22CE; font-weight: bold; }
+        .filter-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+        .filter-bar select { font-size: 12px; padding: 6px; }
 
-        .table-sim { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-        .table-sim th, .table-sim td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border-color); }
-        .table-sim th { color: var(--text-sub); font-weight: normal; background: #FAFAFA; }
+        .summary-box { display: flex; justify-content: space-around; background: #FFFDF6; border: 1px solid #F0E3B8; padding: 12px; border-radius: 8px; margin-bottom: 12px; text-align: center; }
+        .summary-box .num { font-size: 18px; font-weight: 700; color: var(--primary-dark); }
+        .summary-box .lbl { font-size: 11px; color: var(--text-sub); }
 
-        .tip-text { font-size: 12px; color: var(--text-sub); line-height: 1.5; margin-bottom: 10px; }
+        #ocrProgress { font-size: 12px; color: var(--primary-dark); margin-top: 8px; display: none; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h1>积金持仓与卖出追溯</h1>
-    <p>精准穿透每一克黄金买入来源，智能匹配历史与模拟卖出策略。</p>
+    <h1>积金持仓与卖出穿透工具</h1>
+    <p>截图智能识别 + 锚点算法，快速厘清持仓来源</p>
 </div>
 
 <div class="container">
 
-    <!-- 1. 历史持仓初始化 -->
+    <!-- 1. 历史锚点（选择性输入） -->
     <div class="card">
-        <div class="card-title">
-            <span>① 建立历史持仓起点</span>
-            <span class="step-num">基准：2026-05-21 前</span>
-        </div>
-        <p class="tip-text">请录入2026年5月21日前最后一笔卖出交易后，<b>仍剩余</b>的黄金持仓批次：</p>
+        <div class="card-title">① 5/21 前历史锚点 (选填)</div>
+        <p style="font-size:11px; color:#666; margin-bottom:8px;">只需填 5/21 前最后一笔卖出所匹配的买入批次<b>剩余克重</b>：</p>
         <div class="form-row form-group">
-            <input type="datetime-local" id="initDate">
-            <input type="number" id="initWeight" placeholder="剩余克重(g)">
-            <input type="number" id="initPrice" placeholder="买入单价(元)">
+            <input type="date" id="anchorDate" value="2026-05-20">
+            <input type="number" id="anchorWeight" placeholder="剩余克重(g)">
+            <input type="number" id="anchorPrice" placeholder="买入单价(元)">
         </div>
-        <button class="btn btn-secondary" onclick="addInitLot()">+ 添加历史持仓批次</button>
-
-        <div class="item-list" id="initList"></div>
+        <button class="btn btn-secondary" onclick="setAnchor()">设为历史基准起点</button>
+        <div id="anchorStatus" style="font-size:11px; color:var(--success); margin-top:4px;"></div>
     </div>
 
-    <!-- 2. 卖出策略变更记录 -->
+    <!-- 2. OCR 截图上传 -->
+    <div class="card">
+        <div class="card-title">② 交易截图智能识别 (OCR)</div>
+        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+            <p>📷 点击上传手机银行“交易记录”截图</p>
+            <span>支持富民银行等交易明细列表图片（可多选）</span>
+            <input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="handleOCR(this.files)">
+        </div>
+        <div id="ocrProgress">⏳ 正在智能分析图片文字，请稍候...</div>
+    </div>
+
+    <!-- 3. 订单列表与手动调整 -->
     <div class="card">
         <div class="card-title">
-            <span>② 策略变更时间轴</span>
-            <span class="step-num">自动匹配规则</span>
+            <span>③ 交易订单列表</span>
+            <button class="btn-danger-sm" onclick="clearOrders()">清空表格</button>
         </div>
-        <p class="tip-text">系统默认 5/21 前为[先进先出]。请添加 5/21 后的策略修改记录：</p>
+        <div style="overflow-x:auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width:20%">类型</th>
+                        <th style="width:30%">时间</th>
+                        <th style="width:20%">克重</th>
+                        <th style="width:20%">单价</th>
+                        <th style="width:10%"></th>
+                    </tr>
+                </thead>
+                <tbody id="orderTableBody"></tbody>
+            </table>
+        </div>
+        <button class="btn btn-secondary" onclick="addEmptyRow()">+ 手动添加一条订单</button>
+    </div>
+
+    <!-- 4. 卖出策略时间轴 -->
+    <div class="card">
+        <div class="card-title">④ 卖出策略变更点</div>
         <div class="form-row form-group">
-            <input type="datetime-local" id="stratDate">
-            <select id="stratType">
+            <input type="datetime-local" id="stratTime">
+            <select id="stratValue">
                 <option value="低价先出">低价先出</option>
                 <option value="先进先出">先进先出</option>
             </select>
         </div>
-        <button class="btn btn-secondary" onclick="addStrategy()">+ 添加策略修改记录</button>
-
-        <div class="item-list" id="stratList"></div>
+        <button class="btn btn-secondary" onclick="addStrategy()">+ 添加策略切换点</button>
+        <div id="stratList" style="font-size:11px; margin-top:6px; color:#555;"></div>
     </div>
 
-    <!-- 3. 5月21日后的交易录入 -->
-    <div class="card">
-        <div class="card-title">
-            <span>③ 5/21 后的后续交易</span>
-            <span class="step-num">买入与卖出</span>
-        </div>
-        <div class="form-group">
-            <select id="txType" onchange="toggleTxInputs()">
-                <option value="买入">买入订单</option>
-                <option value="卖出">卖出订单</option>
-            </select>
-        </div>
-        <div class="form-row form-group">
-            <input type="datetime-local" id="txDate">
-            <input type="number" id="txWeight" placeholder="交易克重(g)">
-            <input type="number" id="txPrice" placeholder="成交金价(元)">
-        </div>
-        <button class="btn btn-secondary" onclick="addTransaction()">+ 添加交易记录</button>
+    <!-- 计算触发 -->
+    <button class="btn btn-primary" style="margin-bottom:16px;" onclick="calculateHoldings()">生成持仓与追溯明细</button>
 
-        <div class="item-list" id="txList"></div>
-    </div>
-
-    <!-- 4. 模拟卖出测试 -->
-    <div class="card" style="background: #FFFDF6; border-color: #F0E3B8;">
-        <div class="card-title">
-            <span style="color: #8A6D3B;">④ 模拟卖出试算（可选）</span>
-            <span class="step-num">预测未来</span>
-        </div>
-        <p class="tip-text">假设我现在还要再卖出一笔，会扣减哪几笔持仓？</p>
-        <div class="form-row form-group">
-            <input type="number" id="simWeight" placeholder="拟卖出克重(g)">
-            <select id="simStrat">
-                <option value="先进先出">策略：先进先出</option>
-                <option value="低价先出">策略：低价先出</option>
-            </select>
-        </div>
-    </div>
-
-    <!-- 执行计算 -->
-    <button class="btn btn-primary" style="margin-bottom: 20px;" onclick="calculateAll()">生成持仓与匹配明细</button>
-
-    <!-- 5. 结果展示面板 -->
-    <div id="resultArea" style="display: none;">
-        
-        <!-- 汇总 -->
-        <div class="summary-card">
-            <div class="summary-item">
-                <div class="num" id="resTotalWeight">0.00g</div>
-                <div class="label">当前剩余持仓</div>
+    <!-- 5. 结果面板 -->
+    <div id="resultSection" style="display:none;">
+        <div class="summary-box">
+            <div>
+                <div class="num" id="resTotalGrams">0.00g</div>
+                <div class="lbl">当前持仓克重</div>
             </div>
-            <div class="summary-item">
-                <div class="num" id="resAvgPrice">￥0.00</div>
-                <div class="label">持仓均价(元/g)</div>
+            <div>
+                <div class="num" id="resAvgCost">￥0.00</div>
+                <div class="lbl">持仓成本均价</div>
             </div>
         </div>
 
-        <!-- 结果 1：当前持有明细 -->
         <div class="card">
-            <div class="card-title">当前持仓来源（10g组成明细）</div>
-            <table class="table-sim">
+            <div class="card-title">当前持仓来源穿透</div>
+            
+            <!-- 筛选与排序工具栏 -->
+            <div class="filter-bar">
+                <select id="sortField" onchange="renderHoldings()">
+                    <option value="date_asc">时间排序：从旧到新</option>
+                    <option value="date_desc">时间排序：从新到旧</option>
+                    <option value="price_asc">价格排序：从低到高</option>
+                    <option value="price_desc">价格排序：从高到低</option>
+                </select>
+            </div>
+
+            <table class="data-table">
                 <thead>
                     <tr>
                         <th>买入时间</th>
-                        <th>买入价</th>
-                        <th>原始/剩余</th>
+                        <th>买入单价</th>
+                        <th>剩余/原始</th>
                     </tr>
                 </thead>
-                <tbody id="resHoldingsTable"></tbody>
+                <tbody id="holdingsTableBody"></tbody>
             </table>
         </div>
 
-        <!-- 结果 2：卖出穿透匹配明细 -->
         <div class="card">
-            <div class="card-title">历史卖出穿透扣减明细</div>
-            <div id="resMatchDetails"></div>
+            <div class="card-title">卖出扣减追溯明细</div>
+            <div id="sellMatchLogs" style="font-size:12px;"></div>
         </div>
-
-        <!-- 结果 3：模拟卖出匹配预测 -->
-        <div class="card" id="simResultCard" style="display:none; background: #FAFAFA;">
-            <div class="card-title" style="border-left-color: #2ECC71;">模拟卖出匹配预测</div>
-            <div id="resSimMatchDetails"></div>
-        </div>
-
     </div>
 
 </div>
 
 <script>
-    // 内存数据存储
-    let initLots = [];
+    let orders = [];
     let strategies = [];
-    let transactions = [];
+    let anchor = null;
 
-    // 页面加载恢复数据
-    window.onload = function() {
-        const saved = localStorage.getItem('gold_tool_data');
-        if(saved) {
-            const data = JSON.parse(saved);
-            initLots = data.initLots || [];
-            strategies = data.strategies || [];
-            transactions = data.transactions || [];
-            renderAllLists();
+    // 1. 设置锚点
+    function setAnchor() {
+        const date = document.getElementById('anchorDate').value;
+        const weight = parseFloat(document.getElementById('anchorWeight').value);
+        const price = parseFloat(document.getElementById('anchorPrice').value);
+        if(!weight || !price) return alert('请输入历史锚点克重与价格');
+        anchor = { date, weight, price };
+        document.getElementById('anchorStatus').innerText = `已设置起点：${date} 剩余${weight}g (￥${price}/g)`;
+    }
+
+    // 2. OCR识别逻辑 (针对富民银行鸿运金结构)
+    async function handleOCR(files) {
+        if(!files.length) return;
+        const progress = document.getElementById('ocrProgress');
+        progress.style.display = 'block';
+
+        for(let file of files) {
+            try {
+                const worker = await Tesseract.createWorker('chi_sim');
+                const ret = await worker.recognize(file);
+                parseOCRText(ret.data.text);
+                await worker.terminate();
+            } catch(e) {
+                console.error(e);
+                alert('部分图片解析超时，建议手动核对表格');
+            }
         }
-    };
-
-    function saveData() {
-        localStorage.setItem('gold_tool_data', JSON.stringify({ initLots, strategies, transactions }));
+        progress.style.display = 'none';
+        renderOrderTable();
     }
 
-    // 1. 初始化持仓添加
-    function addInitLot() {
-        const date = document.getElementById('initDate').value;
-        const weight = parseFloat(document.getElementById('initWeight').value);
-        const price = parseFloat(document.getElementById('initPrice').value);
-
-        if(!date || !weight || !price) return alert('请完整填写历史持仓信息');
-
-        initLots.push({ id: Date.now(), date, weight, price, remaining: weight });
-        saveData();
-        renderAllLists();
-        clearInputs(['initDate', 'initWeight', 'initPrice']);
-    }
-
-    // 2. 策略变更添加
-    function addStrategy() {
-        const date = document.getElementById('stratDate').value;
-        const type = document.getElementById('stratType').value;
-
-        if(!date) return alert('请选择策略生效时间');
-
-        strategies.push({ id: Date.now(), date, type });
-        // 按时间排序
-        strategies.sort((a,b) => new Date(a.date) - new Date(b.date));
-        saveData();
-        renderAllLists();
-        clearInputs(['stratDate']);
-    }
-
-    // 3. 交易记录添加
-    function addTransaction() {
-        const type = document.getElementById('txType').value;
-        const date = document.getElementById('txDate').value;
-        const weight = parseFloat(document.getElementById('txWeight').value);
-        const price = parseFloat(document.getElementById('txPrice').value);
-
-        if(!date || !weight || !price) return alert('请完整填写交易信息');
-
-        transactions.push({ id: Date.now(), type, date, weight, price });
-        // 按时间排序
-        transactions.sort((a,b) => new Date(a.date) - new Date(b.date));
-        saveData();
-        renderAllLists();
-        clearInputs(['txDate', 'txWeight', 'txPrice']);
-    }
-
-    function removeItem(type, id) {
-        if(type==='init') initLots = initLots.filter(i => i.id !== id);
-        if(type==='strat') strategies = strategies.filter(i => i.id !== id);
-        if(type==='tx') transactions = transactions.filter(i => i.id !== id);
-        saveData();
-        renderAllLists();
-    }
-
-    function clearInputs(ids) {
-        ids.forEach(id => document.getElementById(id).value = '');
-    }
-
-    function renderAllLists() {
-        // 渲染历史持仓
-        document.getElementById('initList').innerHTML = initLots.map(item => `
-            <div class="item-row">
-                <div class="item-info">
-                    <div>${item.date.replace('T', ' ')} | 剩余 ${item.weight}g</div>
-                    <div>买入金价: ￥${item.price}/g</div>
-                </div>
-                <button class="btn-danger-sm" onclick="removeItem('init', ${item.id})">删除</button>
-            </div>
-        `).join('');
-
-        // 渲染策略
-        document.getElementById('stratList').innerHTML = strategies.map(item => `
-            <div class="item-row">
-                <div class="item-info">
-                    <div>${item.date.replace('T', ' ')} 切换为 <span class="lot-badge tag-strategy">${item.type}</span></div>
-                </div>
-                <button class="btn-danger-sm" onclick="removeItem('strat', ${item.id})">删除</button>
-            </div>
-        `).join('');
-
-        // 渲染交易
-        document.getElementById('txList').innerHTML = transactions.map(item => `
-            <div class="item-row">
-                <div class="item-info">
-                    <div>
-                        <span class="lot-badge ${item.type==='卖出'?'tag-sell':''}">${item.type}</span>
-                        ${item.date.replace('T', ' ')} | ${item.weight}g
-                    </div>
-                    <div>成交价: ￥${item.price}/g</div>
-                </div>
-                <button class="btn-danger-sm" onclick="removeItem('tx', ${item.id})">删除</button>
-            </div>
-        `).join('');
-    }
-
-    // 根据时间匹配使用的策略
-    function getStrategyForTime(timeStr) {
-        const targetTime = new Date(timeStr);
-        let currentStrategy = '先进先出'; // 5/21前的默认策略
+    // 正则解析算法
+    function parseOCRText(text) {
+        const lines = text.split('\n');
+        let tempDate = '';
         
-        for(let s of strategies) {
-            if(targetTime >= new Date(s.date)) {
-                currentStrategy = s.type;
-            } else {
-                break;
+        lines.forEach(line => {
+            // 提取日期 (如 2026.08.21 或 2026-08-21)
+            const dateMatch = line.match(/\d{4}[\.\-]\d{2}[\.\-]\d{2}/);
+            if(dateMatch) tempDate = dateMatch[0].replace(/\./g, '-');
+
+            // 判断类型
+            let type = '';
+            if(line.includes('买入')) type = '买入';
+            if(line.includes('卖出')) type = '卖出';
+
+            // 提取单价 (交易价 995.14元/克)
+            const priceMatch = line.match(/(?:交易价|单价)?\s*(\d+\.?\d*)\s*元/);
+            // 提取克重 (共1克 或 1g)
+            const weightMatch = line.match(/(?:共|\b)(\d+\.?\d*)\s*(?:克|g)/);
+
+            if(type && priceMatch && weightMatch) {
+                orders.push({
+                    id: Date.now() + Math.random(),
+                    type: type,
+                    date: tempDate || '2026-08-01',
+                    weight: parseFloat(weightMatch[1]),
+                    price: parseFloat(priceMatch[1])
+                });
             }
-        }
-        return currentStrategy;
+        });
     }
 
-    // 🌟 核心算法：持仓池扣减引擎
-    function calculateAll() {
-        // 1. 构建初始持仓池 (Lot Pool)
-        let pool = initLots.map(item => ({
-            id: item.id,
-            date: item.date,
-            price: item.price,
-            initWeight: item.weight,
-            remaining: item.weight
-        }));
-
-        let matchHistory = []; // 存储卖出匹配穿透日志
-
-        // 2. 按时间顺序处理 5/21 后的每一笔交易
-        for(let tx of transactions) {
-            if(tx.type === '买入') {
-                // 买入订单直接入池
-                pool.push({
-                    id: tx.id,
-                    date: tx.date,
-                    price: tx.price,
-                    initWeight: tx.weight,
-                    remaining: tx.weight
-                });
-            } else if(tx.type === '卖出') {
-                // 确定本笔卖出使用的策略
-                const activeStrat = getStrategyForTime(tx.date);
-                let needToSell = tx.weight;
-                let matchedLots = [];
-
-                // 排序持仓池（仅对有剩余的批次）
-                let availableLots = pool.filter(p => p.remaining > 0);
-                if(activeStrat === '先进先出') {
-                    availableLots.sort((a,b) => new Date(a.date) - new Date(b.date));
-                } else if(activeStrat === '低价先出') {
-                    availableLots.sort((a,b) => a.price - b.price || new Date(a.date) - new Date(b.date));
-                }
-
-                // 扣减匹配
-                for(let lot of availableLots) {
-                    if(needToSell <= 0) break;
-
-                    let take = Math.min(lot.remaining, needToSell);
-                    lot.remaining -= take;
-                    needToSell -= take;
-
-                    matchedLots.push({
-                        buyDate: lot.date,
-                        buyPrice: lot.price,
-                        matchedWeight: take
-                    });
-                }
-
-                matchHistory.push({
-                    sellDate: tx.date,
-                    sellWeight: tx.weight,
-                    sellPrice: tx.price,
-                    strategyUsed: activeStrat,
-                    matches: matchedLots,
-                    unfilled: needToSell > 0 ? needToSell : 0
-                });
-            }
-        }
-
-        // 3. 模拟卖出预测计算（如果填了试算）
-        const simWeight = parseFloat(document.getElementById('simWeight').value);
-        const simStrat = document.getElementById('simStrat').value;
-        let simMatches = [];
-
-        if(simWeight > 0) {
-            let simNeed = simWeight;
-            let simPool = pool.filter(p => p.remaining > 0).map(p => ({...p}));
-
-            if(simStrat === '先进先出') {
-                simPool.sort((a,b) => new Date(a.date) - new Date(b.date));
-            } else {
-                simPool.sort((a,b) => a.price - b.price || new Date(a.date) - new Date(b.date));
-            }
-
-            for(let lot of simPool) {
-                if(simNeed <= 0) break;
-                let take = Math.min(lot.remaining, simNeed);
-                simNeed -= take;
-                simMatches.push({
-                    buyDate: lot.date,
-                    buyPrice: lot.price,
-                    matchedWeight: take
-                });
-            }
-        }
-
-        // 4. 渲染界面结果
-        renderResults(pool, matchHistory, simMatches, simWeight, simStrat);
-    }
-
-    function renderResults(pool, matchHistory, simMatches, simWeight, simStrat) {
-        document.getElementById('resultArea').style.display = 'block';
-
-        // 汇总
-        const activeLots = pool.filter(p => p.remaining > 0);
-        const totalWeight = activeLots.reduce((sum, p) => sum + p.remaining, 0);
-        const totalCost = activeLots.reduce((sum, p) => sum + (p.remaining * p.price), 0);
-        const avgPrice = totalWeight > 0 ? (totalCost / totalWeight).toFixed(2) : '0.00';
-
-        document.getElementById('resTotalWeight').innerText = totalWeight.toFixed(2) + 'g';
-        document.getElementById('resAvgPrice').innerText = '￥' + avgPrice;
-
-        // 当前持仓列表
-        document.getElementById('resHoldingsTable').innerHTML = activeLots.map(p => `
+    // 3. 渲染与手动编辑表格
+    function renderOrderTable() {
+        orders.sort((a,b) => new Date(a.date) - new Date(b.date));
+        const tbody = document.getElementById('orderTableBody');
+        tbody.innerHTML = orders.map((o, index) => `
             <tr>
-                <td>${p.date.replace('T', ' ')}</td>
-                <td>￥${p.price}</td>
-                <td><b>${p.remaining}g</b> / ${p.initWeight}g</td>
+                <td>
+                    <select onchange="updateOrder(${index}, 'type', this.value)">
+                        <option value="买入" ${o.type==='买入'?'selected':''}>买入</option>
+                        <option value="卖出" ${o.type==='卖出'?'selected':''}>卖出</option>
+                    </select>
+                </td>
+                <td><input type="date" value="${o.date}" onchange="updateOrder(${index}, 'date', this.value)"></td>
+                <td><input type="number" value="${o.weight}" style="width:50px" onchange="updateOrder(${index}, 'weight', this.value)"></td>
+                <td><input type="number" value="${o.price}" style="width:60px" onchange="updateOrder(${index}, 'price', this.value)"></td>
+                <td><button class="btn-danger-sm" onclick="deleteOrder(${index})">✕</button></td>
             </tr>
-        `).join('') || '<tr><td colspan="3" style="text-align:center;color:#999;">当前已无无持仓</td></tr>';
+        `).join('');
+    }
 
-        // 卖出穿透明细
-        document.getElementById('resMatchDetails').innerHTML = matchHistory.map(m => `
-            <div style="margin-bottom:12px; padding:10px; background:#FAFAFA; border-radius:8px; border:1px solid #E2E8F0;">
-                <div style="font-weight:bold; font-size:13px; margin-bottom:4px; display:flex; justify-content:space-between;">
-                    <span>${m.sellDate.replace('T', ' ')} 卖出 ${m.sellWeight}g</span>
-                    <span class="lot-badge tag-strategy">${m.strategyUsed}</span>
-                </div>
-                <div style="font-size:11px; color:#666; margin-bottom:6px;">成交单价: ￥${m.price}/g</div>
-                <div style="font-size:12px; border-top:1px dashed #DDD; padding-top:4px;">
-                    ${m.matches.map(match => `
-                        <div style="display:flex; justify-content:space-between; color:#444; margin-top:2px;">
-                            <span>↳ 匹配 ${match.buyDate.replace('T', ' ')} (￥${match.buyPrice})</span>
-                            <b>扣减 ${match.matchedWeight}g</b>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `).join('') || '<div style="color:#999;font-size:12px;">无历史卖出记录</div>';
+    function updateOrder(index, field, value) {
+        orders[index][field] = field==='weight'||field==='price' ? parseFloat(value) : value;
+    }
 
-        // 模拟卖出预测
-        if(simWeight > 0) {
-            document.getElementById('simResultCard').style.display = 'block';
-            document.getElementById('resSimMatchDetails').innerHTML = `
-                <div style="font-size:13px; margin-bottom:8px;">
-                    若按照 <span class="lot-badge tag-strategy">${simStrat}</span> 策略卖出 <b>${simWeight}g</b>：
-                </div>
-                ${simMatches.map(m => `
-                    <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; background:#FFF; padding:6px; border-radius:4px;">
-                        <span>匹配买入批次：${m.buyDate.replace('T', ' ')} (￥${m.buyPrice}/g)</span>
-                        <b style="color:var(--primary-dark);">将卖出 ${m.matchedWeight}g</b>
+    function deleteOrder(index) {
+        orders.splice(index, 1);
+        renderOrderTable();
+    }
+
+    function addEmptyRow() {
+        orders.push({ id: Date.now(), type: '买入', date: new Date().toISOString().split('T')[0], weight: 1, price: 800 });
+        renderOrderTable();
+    }
+
+    function clearOrders() {
+        orders = [];
+        renderOrderTable();
+    }
+
+    // 4. 策略添加
+    function addStrategy() {
+        const time = document.getElementById('stratTime').value;
+        const val = document.getElementById('stratValue').value;
+        if(!time) return alert('请选择时间');
+        strategies.push({ time, val });
+        strategies.sort((a,b) => new Date(a.time) - new Date(b.time));
+        document.getElementById('stratList').innerHTML = strategies.map(s => `📍 ${s.time.replace('T',' ')} 切换为 <b>${s.val}</b>`).join('<br>');
+    }
+
+    // 5. 核心计算引擎
+    let calculatedHoldingsPool = [];
+
+    function calculateHoldings() {
+        let pool = [];
+
+        // 插入历史锚点
+        if(anchor) {
+            pool.push({
+                date: anchor.date,
+                price: anchor.price,
+                initWeight: anchor.weight,
+                remaining: anchor.weight
+            });
+        }
+
+        let sellLogs = [];
+
+        // 顺次撮合订单
+        for(let o of orders) {
+            if(o.type === '买入') {
+                pool.push({
+                    date: o.date,
+                    price: o.price,
+                    initWeight: o.weight,
+                    remaining: o.weight
+                });
+            } else if(o.type === '卖出') {
+                // 确定策略
+                let activeStrat = '先进先出';
+                for(let s of strategies) {
+                    if(new Date(o.date) >= new Date(s.time)) activeStrat = s.val;
+                }
+
+                let needSell = o.weight;
+                let available = pool.filter(p => p.remaining > 0);
+
+                if(activeStrat === '低价先出') {
+                    available.sort((a,b) => a.price - b.price || new Date(a.date) - new Date(b.date));
+                } else {
+                    available.sort((a,b) => new Date(a.date) - new Date(b.date));
+                }
+
+                let matches = [];
+                for(let lot of available) {
+                    if(needSell <= 0) break;
+                    let take = Math.min(lot.remaining, needSell);
+                    lot.remaining -= take;
+                    needSell -= take;
+                    matches.push({ buyDate: lot.date, buyPrice: lot.price, weight: take });
+                }
+
+                sellLogs.push({ date: o.date, weight: o.weight, price: o.price, strat: activeStrat, matches });
+            }
+        }
+
+        calculatedHoldingsPool = pool.filter(p => p.remaining > 0);
+        
+        // 渲染结果
+        renderHoldings();
+        renderSellLogs(sellLogs);
+        document.getElementById('resultSection').style.display = 'block';
+    }
+
+    // 排序与渲染持仓列表
+    function renderHoldings() {
+        const sortVal = document.getElementById('sortField').value;
+        let list = [...calculatedHoldingsPool];
+
+        if(sortVal === 'date_asc') list.sort((a,b) => new Date(a.date) - new Date(b.date));
+        if(sortVal === 'date_desc') list.sort((a,b) => new Date(b.date) - new Date(a.date));
+        if(sortVal === 'price_asc') list.sort((a,b) => a.price - b.price);
+        if(sortVal === 'price_desc') list.sort((a,b) => b.price - a.price);
+
+        const totalGrams = list.reduce((sum, i) => sum + i.remaining, 0);
+        const totalCost = list.reduce((sum, i) => sum + (i.remaining * i.price), 0);
+        const avgCost = totalGrams > 0 ? (totalCost / totalGrams).toFixed(2) : '0.00';
+
+        document.getElementById('resTotalGrams').innerText = totalGrams.toFixed(2) + 'g';
+        document.getElementById('resAvgCost').innerText = '￥' + avgCost;
+
+        document.getElementById('holdingsTableBody').innerHTML = list.map(item => `
+            <tr>
+                <td>${item.date}</td>
+                <td>￥${item.price}</td>
+                <td><b>${item.remaining}g</b> / ${item.initWeight}g</td>
+            </tr>
+        `).join('') || '<tr><td colspan="3" style="text-align:center;color:#999;">当前已清仓</td></tr>';
+    }
+
+    function renderSellLogs(logs) {
+        document.getElementById('sellMatchLogs').innerHTML = logs.map(l => `
+            <div style="background:#F8FAFC; padding:8px; border-radius:6px; margin-bottom:8px; border:1px solid #E2E8F0;">
+                <div style="font-weight:600;">${l.date} 卖出 ${l.weight}g (￥${l.price}/g) - <span style="color:var(--primary-dark);">${l.strat}</span></div>
+                ${l.matches.map(m => `
+                    <div style="color:#666; font-size:11px; margin-top:2px;">
+                        ↳ 扣减 ${m.buyDate} (￥${m.buyPrice}/g) 批次：<b>${m.weight}g</b>
                     </div>
                 `).join('')}
-            `;
-        } else {
-            document.getElementById('simResultCard').style.display = 'none';
-        }
-
-        // 滚动到底部查看结果
-        document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth' });
+            </div>
+        `).join('') || '无卖出记录';
     }
 </script>
 
