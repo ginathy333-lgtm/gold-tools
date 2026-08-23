@@ -35,14 +35,16 @@
         .form-group { margin-bottom: 10px; }
         .form-group label { display: block; font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }
         .form-row { display: flex; gap: 6px; }
-        input, select { width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; outline: none; background: #FAFAFA; }
-        input:focus, select:focus { border-color: var(--primary); background: #FFF; }
+        input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; outline: none; background: #FAFAFA; }
+        input:focus, select:focus, textarea:focus { border-color: var(--primary); background: #FFF; }
 
-        /* 上传组件 */
-        .upload-area { border: 2px dashed var(--primary); background: rgba(197, 160, 89, 0.05); border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; transition: 0.2s; }
+        /* 上传与文本框 */
+        .upload-area { border: 2px dashed var(--primary); background: rgba(197, 160, 89, 0.05); border-radius: 8px; padding: 16px; text-align: center; cursor: pointer; transition: 0.2s; margin-bottom: 10px; }
         .upload-area:active { background: rgba(197, 160, 89, 0.15); }
         .upload-area p { font-size: 13px; color: var(--primary-dark); font-weight: 500; }
         .upload-area span { font-size: 11px; color: var(--text-sub); display: block; margin-top: 4px; }
+
+        .text-import-area { background: #FAFAFA; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; }
 
         /* 按钮 */
         .btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
@@ -70,7 +72,7 @@
 
 <div class="header">
     <h1>积金持仓与卖出穿透工具</h1>
-    <p>截图智能识别 + 锚点算法，快速厘清持仓来源</p>
+    <p>文本/截图智能识别 + 锚点算法，快速厘清持仓来源</p>
 </div>
 
 <div class="container">
@@ -88,15 +90,25 @@
         <div id="anchorStatus" style="font-size:11px; color:var(--success); margin-top:4px;"></div>
     </div>
 
-    <!-- 2. OCR 截图上传 -->
+    <!-- 2. 数据导入 (文本粘贴 + OCR) -->
     <div class="card">
-        <div class="card-title">② 交易截图智能识别 (OCR)</div>
+        <div class="card-title">② 交易明细快捷导入</div>
+        
+        <!-- 方式 A：粘贴文本（极速推荐） -->
+        <div class="text-import-area">
+            <textarea id="rawText" rows="4" placeholder="📋 推荐：把复制的交易记录文本直接粘贴到这里（例如包含“个人买入”、“2026.04.29”、“交易价999.64元/克”等文字）..."></textarea>
+            <button class="btn btn-primary" style="margin-top:6px; font-size:12px; padding:8px;" onclick="parseRawText()">⚡ 一键解析文本订单</button>
+        </div>
+
+        <div style="text-align:center; margin:10px 0; color:#A0A2A8; font-size:11px;">— 或 —</div>
+
+        <!-- 方式 B：图片上传 -->
         <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-            <p>📷 点击上传手机银行“交易记录”截图</p>
-            <span>支持富民银行等交易明细截图（可一次选多张）</span>
+            <p>📷 上传手机银行“交易记录”截图</p>
+            <span>支持多张图片识别</span>
             <input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="handleOCR(this.files)">
         </div>
-        <div id="ocrProgress">⏳ 正在解析图片文字中，请稍等...</div>
+        <div id="ocrProgress">⏳ 正在解析图片文字中...</div>
     </div>
 
     <!-- 3. 订单列表与手动调整 -->
@@ -155,7 +167,6 @@
         <div class="card">
             <div class="card-title">当前持仓来源穿透</div>
             
-            <!-- 筛选与排序工具栏 -->
             <div class="filter-bar">
                 <select id="sortField" onchange="renderHoldings()">
                     <option value="date_asc">时间排序：从旧到新</option>
@@ -199,74 +210,90 @@
         document.getElementById('anchorStatus').innerText = `已设置起点：${date} 剩余${weight}g (￥${price}/g)`;
     }
 
-    // 优化后的极速安全 OCR 调取逻辑
+    // 智能文本解析核心逻辑（兼容复制文本的格式错位与乱序）
+    function parseRawText() {
+        const text = document.getElementById('rawText').value;
+        if(!text.trim()) return alert('请先粘贴文本');
+
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+        let parsedCount = 0;
+
+        // 智能上下文状态机
+        let dates = [];
+        let types = [];
+        let prices = [];
+        let weights = [];
+
+        lines.forEach(line => {
+            // 匹配类型
+            if (line.includes('买入')) types.push('买入');
+            else if (line.includes('卖出')) types.push('卖出');
+
+            // 匹配日期 (YYYY.MM.DD 或 YYYY-MM-DD)
+            const dMatch = line.match(/\d{4}[\.\-]\d{2}[\.\-]\d{2}/);
+            if (dMatch) dates.push(dMatch[0].replace(/\./g, '-'));
+
+            // 匹配单价 (如 交易价999.64元/克 或 交易价1,000.33元)
+            const pMatch = line.match(/(?:交易价|¥|￥)\s*([\d,]+\.?\d*)\s*元/);
+            if (pMatch) {
+                prices.push(parseFloat(pMatch[1].replace(/,/g, '')));
+            }
+
+            // 匹配克重 (如 共1克 或 1g)
+            const wMatch = line.match(/(?:共|\b)(\d+\.?\d*)\s*(?:克|g)/);
+            if (wMatch) {
+                weights.push(parseFloat(wMatch[1]));
+            }
+        });
+
+        // 配对组装订单
+        const count = Math.min(prices.length, weights.length);
+        for(let i = 0; i < count; i++) {
+            orders.push({
+                id: Date.now() + Math.random(),
+                type: types[i] || '买入',
+                date: dates[i] || dates[dates.length - 1] || new Date().toISOString().split('T')[0],
+                weight: weights[i] || 1,
+                price: prices[i]
+            });
+            parsedCount++;
+        }
+
+        if(parsedCount > 0) {
+            alert(`成功解析出 ${parsedCount} 条交易订单！已同步填入下方表格。`);
+            document.getElementById('rawText').value = '';
+            renderOrderTable();
+        } else {
+            alert('未能在文本中识别出有效订单，请检查粘贴格式或手动添加。');
+        }
+    }
+
+    // OCR 支持
     async function handleOCR(files) {
         if(!files.length) return;
         const progress = document.getElementById('ocrProgress');
         progress.style.display = 'block';
 
         try {
-            // 使用极速 CDN 节点拉取语言包
             const worker = await Tesseract.createWorker('chi_sim', 1, {
                 workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/worker.min.js',
                 corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4/tesseract-core.wasm.js',
-                langPath: 'https://tessdata.projectnaptha.com/4.0.0', // 稳定语言包镜像
-                logger: m => {
-                    if(m.status === 'recognizing text') {
-                        progress.innerText = `⏳ 正在识别图片中... (${Math.round(m.progress * 100)}%)`;
-                    } else if(m.status === 'loading tesseract core' || m.status === 'downloading tessdata') {
-                        progress.innerText = `⏳ 首次加载算法库，请稍等...`;
-                    }
-                }
+                langPath: 'https://tessdata.projectnaptha.com/4.0.0'
             });
 
             for(let i = 0; i < files.length; i++) {
-                progress.innerText = `⏳ 正在分析第 (${i+1}/${files.length}) 张图片...`;
+                progress.innerText = `⏳ 解析图片中 (${i+1}/${files.length})...`;
                 const ret = await worker.recognize(files[i]);
-                parseOCRText(ret.data.text);
+                document.getElementById('rawText').value += '\n' + ret.data.text;
             }
 
             await worker.terminate();
-            alert('识别完成！请核对并编辑下方解析出的表格数据。');
+            parseRawText();
         } catch(e) {
             console.error(e);
-            alert('网络加载较慢导致超时。已为您切回手动模式，您可以直接在下方表格添加或微调订单！');
+            alert('图片加载超时，建议直接复制图片上的文字粘贴解析，速度更快！');
         }
-
         progress.style.display = 'none';
-        renderOrderTable();
-    }
-
-    // 正则提取算法（专针对鸿运金截图优化）
-    function parseOCRText(text) {
-        const lines = text.split('\n');
-        let tempDate = '';
-
-        lines.forEach(line => {
-            // 提取日期 (如 2026.08.21 或 2026-08-21)
-            const dateMatch = line.match(/\d{4}[\.\-]\d{2}[\.\-]\d{2}/);
-            if(dateMatch) tempDate = dateMatch[0].replace(/\./g, '-');
-
-            // 判断交易类型
-            let type = '';
-            if(line.includes('买入')) type = '买入';
-            if(line.includes('卖出')) type = '卖出';
-
-            // 提取单价 (如 交易价995.14元/克 或 995.14元)
-            const priceMatch = line.match(/(\d+\.?\d*)\s*元/);
-            // 提取克重 (如 共1克 或 1g)
-            const weightMatch = line.match(/(?:共|\b)(\d+\.?\d*)\s*(?:克|g)/);
-
-            if(type && priceMatch && weightMatch) {
-                orders.push({
-                    id: Date.now() + Math.random(),
-                    type: type,
-                    date: tempDate || new Date().toISOString().split('T')[0],
-                    weight: parseFloat(weightMatch[1]),
-                    price: parseFloat(priceMatch[1])
-                });
-            }
-        });
     }
 
     function renderOrderTable() {
