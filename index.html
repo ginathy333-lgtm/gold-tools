@@ -69,6 +69,8 @@
         .tip-tag { font-size: 11px; color: #718096; background: #EDF2F7; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px; display: inline-block; }
 
         #ocrProgress { font-size: 12px; color: var(--primary-dark); margin-top: 8px; display: none; text-align: center; font-weight: 500; }
+        
+        .save-tip { font-size: 11px; color: var(--success); text-align: right; margin-bottom: 6px; }
     </style>
 </head>
 <body>
@@ -80,14 +82,16 @@
 
 <div class="container">
 
+    <div class="save-tip" id="saveTip">💾 数据已实现浏览器本地自动保存</div>
+
     <!-- 1. 历史锚点（选填） -->
     <div class="card">
         <div class="card-title">① 5/21 前历史锚点 (选填)</div>
         <p style="font-size:11px; color:#666; margin-bottom:8px;">只需填 5/21 前最后一笔卖出所匹配的买入批次<b>剩余克重</b>：</p>
         <div class="form-row form-group">
-            <input type="date" id="anchorDate" value="2026-05-20">
-            <input type="number" id="anchorWeight" placeholder="剩余克重(g)">
-            <input type="number" id="anchorPrice" placeholder="买入单价(元)">
+            <input type="date" id="anchorDate" value="2026-05-20" onchange="saveAnchorFromInput()">
+            <input type="number" id="anchorWeight" placeholder="剩余克重(g)" onchange="saveAnchorFromInput()">
+            <input type="number" id="anchorPrice" placeholder="买入单价(元)" onchange="saveAnchorFromInput()">
         </div>
         <button class="btn btn-secondary" onclick="setAnchor()">设为历史基准起点</button>
         <div id="anchorStatus" style="font-size:11px; color:var(--success); margin-top:4px;"></div>
@@ -121,8 +125,8 @@
         <div class="card-title">
             <span>③ 交易订单明细（严格按成交顺序）</span>
             <div>
-                <button class="btn-secondary" style="font-size:11px; padding:2px 6px; margin:0;" onclick="reverseOrders()">↕️ 整体颠倒顺序</button>
-                <button class="btn-danger-sm" onclick="clearOrders()">清空</button>
+                <button class="btn-secondary" style="font-size:11px; padding:2px 6px; margin:0;" onclick="reverseOrders()">↕️ 顺序颠倒</button>
+                <button class="btn-danger-sm" onclick="clearOrders()">清空数据</button>
             </div>
         </div>
         
@@ -148,7 +152,10 @@
 
     <!-- 4. 卖出策略时间轴 -->
     <div class="card">
-        <div class="card-title">④ 卖出策略变更点</div>
+        <div class="card-title">
+            <span>④ 卖出策略变更点</span>
+            <button class="btn-danger-sm" onclick="clearStrategies()">清空策略</button>
+        </div>
         <div class="form-row form-group">
             <input type="datetime-local" id="stratTime">
             <select id="stratValue">
@@ -213,57 +220,101 @@
     let strategies = [];
     let anchor = null;
 
-    function setAnchor() {
+    // 页面加载完成后自动恢复数据
+    window.onload = function() {
+        loadDataFromStorage();
+    };
+
+    // 自动保存本地缓存逻辑
+    function saveDataToStorage() {
+        localStorage.setItem('gold_tool_orders', JSON.stringify(orders));
+        localStorage.setItem('gold_tool_strategies', JSON.stringify(strategies));
+        if (anchor) {
+            localStorage.setItem('gold_tool_anchor', JSON.stringify(anchor));
+        } else {
+            localStorage.removeItem('gold_tool_anchor');
+        }
+    }
+
+    function loadDataFromStorage() {
+        const savedOrders = localStorage.getItem('gold_tool_orders');
+        const savedStrategies = localStorage.getItem('gold_tool_strategies');
+        const savedAnchor = localStorage.getItem('gold_tool_anchor');
+
+        if (savedOrders) {
+            orders = JSON.parse(savedOrders);
+            renderOrderTable();
+        }
+
+        if (savedStrategies) {
+            strategies = JSON.parse(savedStrategies);
+            renderStrategyList();
+        }
+
+        if (savedAnchor) {
+            anchor = JSON.parse(savedAnchor);
+            document.getElementById('anchorDate').value = anchor.date;
+            document.getElementById('anchorWeight').value = anchor.weight;
+            document.getElementById('anchorPrice').value = anchor.price;
+            document.getElementById('anchorStatus').innerText = `已设置起点：${anchor.date} 剩余${anchor.weight}g (￥${anchor.price}/g)`;
+        }
+    }
+
+    function saveAnchorFromInput() {
         const date = document.getElementById('anchorDate').value;
         const weight = parseFloat(document.getElementById('anchorWeight').value);
         const price = parseFloat(document.getElementById('anchorPrice').value);
-        if(!weight || !price) return alert('请输入历史锚点克重与价格');
-        anchor = { date, weight, price };
-        document.getElementById('anchorStatus').innerText = `已设置起点：${date} 剩余${weight}g (￥${price}/g)`;
+        if (date && weight && price) {
+            anchor = { date, weight, price };
+            document.getElementById('anchorStatus').innerText = `已设置起点：${date} 剩余${weight}g (￥${price}/g)`;
+        } else {
+            anchor = null;
+            document.getElementById('anchorStatus').innerText = '';
+        }
+        saveDataToStorage();
     }
 
-    // 解决“文本上下分块”问题的全局拉链式智能解析算法
+    function setAnchor() {
+        saveAnchorFromInput();
+        if(anchor) alert('基准起点设置成功，已自动保存！');
+    }
+
+    // 全局双阵列智能解析算法
     function parseRawText() {
         const text = document.getElementById('rawText').value;
         if(!text.trim()) return alert('请先粘贴文本');
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l);
 
-        let metaList = []; // 存储提取出的 [类型, 日期]
-        let itemDetailList = []; // 存储提取出的 [价格, 克重]
+        let metaList = [];
+        let itemDetailList = [];
 
         let currentType = '买入';
         let currentDate = new Date().toISOString().split('T')[0];
 
         lines.forEach(line => {
-            // 提取交易类型
             if (line.includes('买入')) currentType = '买入';
             if (line.includes('卖出')) currentType = '卖出';
 
-            // 提取日期
             const dMatch = line.match(/\d{4}[\.\-]\d{2}[\.\-]\d{2}/);
             if (dMatch) {
                 currentDate = dMatch[0].replace(/\./g, '-');
-                // 每次遇到日期，记录一次头部元数据
                 metaList.push({ type: currentType, date: currentDate });
             }
 
-            // 提取单价 & 克重 (针对：交易价999.64元/克、¥1,000.33（共1克）等)
             const pMatch = line.match(/(?:交易价|¥|￥)\s*([\d,]+\.?\d*)\s*元/);
             const wMatch = line.match(/(?:共|\b)(\d+\.?\d*)\s*(?:克|g)/);
 
             if (pMatch || wMatch) {
                 let price = pMatch ? parseFloat(pMatch[1].replace(/,/g, '')) : null;
-                let weight = wMatch ? parseFloat(wMatch[1]) : 1; // 默认1g
+                let weight = wMatch ? parseFloat(wMatch[1]) : 1;
 
-                // 如果本行有价格，追加一条详情
                 if (price) {
                     itemDetailList.push({ price: price, weight: weight });
                 }
             }
         });
 
-        // 核心对齐逻辑：将元信息与价格数据拉链匹配
         let extracted = [];
         const count = Math.min(metaList.length, itemDetailList.length);
 
@@ -278,7 +329,6 @@
                 });
             }
         } else if (itemDetailList.length > 0) {
-            // 万一元信息抓取不到，回退保底逻辑
             itemDetailList.forEach(item => {
                 extracted.push({
                     id: Date.now() + Math.random(),
@@ -291,13 +341,13 @@
         }
 
         if (extracted.length > 0) {
-            // 手机 App 复制是从新到旧（最新在上面），翻转还原为真实成交顺（从旧到新）
             extracted.reverse();
             orders = orders.concat(extracted);
 
-            alert(`🎉 完美提取 ${extracted.length} 条交易！已按成交先后顺序填入表格。`);
+            alert(`🎉 完美提取 ${extracted.length} 条交易！已按成交先后顺序填入表格并自动保存。`);
             document.getElementById('rawText').value = '';
             renderOrderTable();
+            saveDataToStorage();
         } else {
             alert('未能在文本中识别出有效交易信息，请检查粘贴文本。');
         }
@@ -356,30 +406,38 @@
         orders[index] = orders[target];
         orders[target] = temp;
         renderOrderTable();
+        saveDataToStorage();
     }
 
     function reverseOrders() {
         orders.reverse();
         renderOrderTable();
+        saveDataToStorage();
     }
 
     function updateOrder(index, field, value) {
         orders[index][field] = (field==='weight'||field==='price') ? parseFloat(value) : value;
+        saveDataToStorage();
     }
 
     function deleteOrder(index) {
         orders.splice(index, 1);
         renderOrderTable();
+        saveDataToStorage();
     }
 
     function addEmptyRow() {
         orders.push({ id: Date.now(), type: '买入', date: new Date().toISOString().split('T')[0], weight: 1, price: 800 });
         renderOrderTable();
+        saveDataToStorage();
     }
 
     function clearOrders() {
-        orders = [];
-        renderOrderTable();
+        if(confirm("确定要清空表格中的所有交易记录吗？")) {
+            orders = [];
+            renderOrderTable();
+            saveDataToStorage();
+        }
     }
 
     function addStrategy() {
@@ -388,7 +446,18 @@
         if(!time) return alert('请选择时间');
         strategies.push({ time, val });
         strategies.sort((a,b) => new Date(a.time) - new Date(b.time));
+        renderStrategyList();
+        saveDataToStorage();
+    }
+
+    function renderStrategyList() {
         document.getElementById('stratList').innerHTML = strategies.map(s => `📍 ${s.time.replace('T',' ')} 切换为 <b>${s.val}</b>`).join('<br>');
+    }
+
+    function clearStrategies() {
+        strategies = [];
+        renderStrategyList();
+        saveDataToStorage();
     }
 
     let calculatedHoldingsPool = [];
